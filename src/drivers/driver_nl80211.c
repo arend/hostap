@@ -6331,7 +6331,9 @@ static const char * nl80211_iftype_str(enum nl80211_iftype mode)
 static int nl80211_create_iface_once(struct wpa_driver_nl80211_data *drv,
 				     const char *ifname,
 				     enum nl80211_iftype iftype,
-				     const u8 *addr, int wds)
+				     const u8 *addr, int wds,
+				     int (*handler)(struct nl_msg *, void *),
+				     void *arg)
 {
 	struct nl_msg *msg;
 	int ifidx;
@@ -6363,7 +6365,7 @@ static int nl80211_create_iface_once(struct wpa_driver_nl80211_data *drv,
 		NLA_PUT_U8(msg, NL80211_ATTR_4ADDR, wds);
 	}
 
-	ret = send_and_recv_msgs(drv, msg, NULL, NULL);
+	ret = send_and_recv_msgs(drv, msg, handler, arg);
 	msg = NULL;
 	if (ret) {
  nla_put_failure:
@@ -6395,11 +6397,14 @@ static int nl80211_create_iface_once(struct wpa_driver_nl80211_data *drv,
 
 static int nl80211_create_iface(struct wpa_driver_nl80211_data *drv,
 				const char *ifname, enum nl80211_iftype iftype,
-				const u8 *addr, int wds)
+				const u8 *addr, int wds,
+				int (*handler)(struct nl_msg *, void *),
+				void *arg)
 {
 	int ret;
 
-	ret = nl80211_create_iface_once(drv, ifname, iftype, addr, wds);
+	ret = nl80211_create_iface_once(drv, ifname, iftype, addr, wds, handler,
+					arg);
 
 	/* if error occurred and interface exists already */
 	if (ret == -ENFILE && if_nametoindex(ifname)) {
@@ -6410,7 +6415,7 @@ static int nl80211_create_iface(struct wpa_driver_nl80211_data *drv,
 
 		/* Try to create the interface again */
 		ret = nl80211_create_iface_once(drv, ifname, iftype, addr,
-						wds);
+						wds, handler, arg);
 	}
 
 	if (ret >= 0 && is_p2p_net_interface(iftype))
@@ -6760,7 +6765,7 @@ nl80211_create_monitor_interface(struct wpa_driver_nl80211_data *drv)
 
 	drv->monitor_ifidx =
 		nl80211_create_iface(drv, buf, NL80211_IFTYPE_MONITOR, NULL,
-				     0);
+				     0, NULL, NULL);
 
 	if (drv->monitor_ifidx == -EOPNOTSUPP) {
 		/*
@@ -8268,7 +8273,7 @@ static int i802_set_wds_sta(void *priv, const u8 *addr, int aid, int val,
 		if (!if_nametoindex(name)) {
 			if (nl80211_create_iface(drv, name,
 						 NL80211_IFTYPE_AP_VLAN,
-						 bss->addr, 1) < 0)
+						 bss->addr, 1, NULL, NULL) < 0)
 				return -1;
 			if (bridge_ifname &&
 			    linux_br_add_if(drv->global->ioctl_sock,
@@ -8555,7 +8560,7 @@ static int wpa_driver_nl80211_if_add(void *priv, enum wpa_driver_if_type type,
 		os_memcpy(if_addr, addr, ETH_ALEN);
 	ifidx = nl80211_create_iface(drv, ifname,
 				     wpa_driver_nl80211_if_type(type), addr,
-				     0);
+				     0, NULL, NULL);
 	if (ifidx < 0) {
 #ifdef HOSTAPD
 		os_free(new_bss);
