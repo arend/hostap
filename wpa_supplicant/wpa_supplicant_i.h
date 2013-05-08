@@ -237,6 +237,7 @@ struct wpa_global {
 	struct wpa_supplicant *p2p_init_wpa_s;
 	struct wpa_supplicant *p2p_group_formation;
 	struct wpa_supplicant *p2p_invite_group;
+	int p2p_dev_init;
 	u8 p2p_dev_addr[ETH_ALEN];
 	struct dl_list p2p_srv_bonjour; /* struct p2p_srv_bonjour */
 	struct dl_list p2p_srv_upnp; /* struct p2p_srv_upnp */
