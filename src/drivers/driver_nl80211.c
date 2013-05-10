@@ -3733,25 +3733,51 @@ static void wpa_driver_nl80211_send_rfkill(void *eloop_ctx, void *timeout_ctx)
 	wpa_supplicant_event(timeout_ctx, EVENT_INTERFACE_DISABLED, NULL);
 }
 
-static int nl80211_start_p2pdev(struct i802_bss *bss)
+static void nl80211_del_p2pdev(struct i802_bss *bss)
 {
 	struct wpa_driver_nl80211_data *drv = bss->drv;
 	struct nl_msg *msg;
-	int ret = -1;
-
-	wpa_printf(MSG_DEBUG, "nl80211: start p2p device %s (%" PRIx64 ")",
-		   bss->ifname, bss->wdev_id);
+	int ret;
 
 	msg = nlmsg_alloc();
 	if (!msg)
-		return -1;
+		return;
 
-	nl80211_cmd(drv, msg, 0, NL80211_CMD_START_P2P_DEVICE);
+	nl80211_cmd(drv, msg, 0, NL80211_CMD_DEL_INTERFACE);
 	NLA_PUT_U64(msg, NL80211_ATTR_WDEV, bss->wdev_id);
 
 	ret = send_and_recv_msgs(drv, msg, NULL, NULL);
 	msg = NULL;
 
+	wpa_printf(MSG_DEBUG, "nl80211: delete p2p device %s (%" PRIx64 "): %s",
+		   bss->ifname, bss->wdev_id, strerror(ret));
+nla_put_failure:
+	nlmsg_free(msg);
+	return;
+}
+
+static int nl80211_set_p2pdev(struct i802_bss *bss, int start)
+{
+	struct wpa_driver_nl80211_data *drv = bss->drv;
+	struct nl_msg *msg;
+	int ret = -1;
+
+	msg = nlmsg_alloc();
+	if (!msg)
+		return -1;
+
+	if (start)
+		nl80211_cmd(drv, msg, 0, NL80211_CMD_START_P2P_DEVICE);
+	else
+		nl80211_cmd(drv, msg, 0, NL80211_CMD_STOP_P2P_DEVICE);
+	NLA_PUT_U64(msg, NL80211_ATTR_WDEV, bss->wdev_id);
+
+	ret = send_and_recv_msgs(drv, msg, NULL, NULL);
+	msg = NULL;
+
+	wpa_printf(MSG_DEBUG, "nl80211: %s p2p device %s (%" PRIx64 "): %s",
+		   start ? "start" : "stop", bss->ifname, bss->wdev_id,
+		   strerror(ret));
 nla_put_failure:
 	nlmsg_free(msg);
 	return ret;
@@ -3817,7 +3843,7 @@ wpa_driver_nl80211_finish_drv_init(struct wpa_driver_nl80211_data *drv)
 		return -1;
 
 	if (nlmode == NL80211_IFTYPE_P2P_DEVICE) {
-		int ret = nl80211_start_p2pdev(bss);
+		int ret = nl80211_set_p2pdev(bss, 1);
 		if (ret < 0)
 			wpa_printf(MSG_ERROR, "nl80211: could not start P2P device");
 		return ret;
@@ -3940,7 +3966,8 @@ static void wpa_driver_nl80211_deinit(struct i802_bss *bss)
 	(void)i802_set_iface_flags(bss, 0);
 	wpa_driver_nl80211_set_mode(bss, NL80211_IFTYPE_STATION);
 	nl80211_mgmt_unsubscribe(bss, "deinit");
-
+	if (nl80211_get_ifmode(bss) == NL80211_IFTYPE_P2P_DEVICE)
+		nl80211_del_p2pdev(bss);
 	nl_cb_put(drv->nl_cb);
 
 	nl80211_destroy_bss(&drv->first_bss);
